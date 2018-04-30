@@ -1,0 +1,211 @@
+import numpy as np
+
+def testState(start_state):
+    '''
+    For an input, this function checks whether the input is in the correct form.
+    The correct form entails two conditions:
+        -- all states appear only ones
+        -- the input should have the appropriate dimensions.
+            e.g. for n = 3, the puzzle should have three lists with 3 elements each.
+    '''
+    count = 0
+    tracking_duplicates = []
+    for list in start_state:
+        for index in list:
+            count += 1
+            tracking_duplicates.append(index)
+            if tracking_duplicates.count(index) > 1:
+                return False
+            else:
+                continue
+    if count == len(start_state) ** 2:
+        return True
+
+def createGoalState(n):
+    '''
+    For any given puzzle dimension, this function generates the relevant goal state.
+    For example, for n = 3, this function will generate a 3 * 3 puzzle grid and fill
+        in the states appropriately. I.e. [[0,1,2],[3,4,5],[6,7,8]]
+    '''
+    goal_state = list(range(0, n**2))
+    goal_state = [goal_state[x:x + n] for x in range(0, len(goal_state), n)]
+    return goal_state
+
+#All heuristic functions are implemented here.
+
+def misplacedTiles(curr_state, goal_state):
+    '''
+    Calculates the total number of misplaced tiles, which is the count
+    of the tiles in the current_state that do not match the positions in the gola state.
+    '''
+
+    misplaced_tiles = 0
+    for list in curr_state:
+        for item in list:
+            if np.where(item == curr_state) != np.where(item == goal_state):
+                misplaced_tiles += 1
+    return misplaced_tiles
+
+def manhattanDistance(curr_state, goal_state):
+    '''
+    Calculates the Manhattan distance between the current state and the
+    goal state. The result will represent the f_cost.
+    '''
+    distance = 0
+    n = len(goal_state)
+
+    for i in range(n):
+        for j in range(n):
+            pos_curr = (i, j)
+            pos_goal = (curr_state[i][j] // n, curr_state[i][j] % n)
+            distance += (abs(pos_goal[0] - pos_curr[0])) + (abs(pos_goal[1] - pos_curr[1]))
+
+    return int(distance)
+
+
+heuristics = [misplacedTiles, manhattanDistance]
+
+#Converstions.
+
+def listoflists_tuple(listoflists):
+    return tuple(tuple(list) for list in listoflists)
+
+
+class PuzzleNode():
+    '''
+    This class initializes the nodes
+    '''
+    def __init__(self, state, coord, fval, gval, parent=None):
+        self.state = listoflists_tuple(state)
+        self.coord = coord
+        self.fval = fval  # this is how far a node is from the start state.
+        self.gval = gval  # this is the heuristic value.
+        self.parent = parent
+        self.pruned = False
+
+    def __lt__(self, other):
+        '''
+        This method provides instructions for how to compare nodes objects, which
+        will be useful for adding nodes to the frontier. The heap structure
+        will compare the fval of nodes and place them accordingly.
+        '''
+        return self.fval + self.gval < other.fval + other.gval
+
+    def __str__(self):
+        return str(self.state)
+
+
+import heapq
+
+def solvePuzzle(n, start_state, heuristic, printResults = False):
+    '''
+    This function uses the A* algorithm to solve the n-Puzzle.
+    Note that the heap data structure is used to maintain the frontier to have ease of ordering.
+    :param n: The dimensions of the puzzle.
+    :param start_state: Starting state of the puzzle.
+    :param heuristic: The heuristic to use
+    :param printResults: a True or False value
+    :return:
+    '''
+    #First test if the start_state is in it's correct position:
+    if not testState(start_state):
+        return 0, 0, -1
+
+    #Now, generate the relevant goal state for input.
+    goal_state = listoflists_tuple(createGoalState(n))
+
+    #Since 0 represents the empty space, this calculates the coordinate of 0,
+    #which is used to initialize the start_node.
+    x = [x for x in start_state if 0 in x][0]
+    coord_0 = ((start_state.index(x), x.index(0)))
+    start_node = PuzzleNode(listoflists_tuple(start_state),coord_0, 0, heuristic(start_state, goal_state))
+
+    #This maintains the states that have been visited by nodes:
+    costs_db = {start_node.state: start_node}
+
+    #Now we initialize the frontier as a heap.
+    frontier = []
+    heapq.heappush(frontier, start_node)
+
+    #Now we specify all coordinate changes that can happen at a swap.
+    moves = ((1,0),(0,1),(-1,0),(0,-1))
+
+    #Begin A* Search:
+    expansion_counter = 0
+    max_frontier = 0
+    #print('goalstate', goal_state)
+    while len(frontier) > 0:
+        if len(frontier) > max_frontier:
+            max_frontier = len(frontier)
+
+        #if expansion_counter > 100:
+        #    break
+
+        #print("frontier is", frontier)
+        curr_node = heapq.heappop(frontier)
+
+        curr_state = curr_node.state
+        coord_0 = curr_node.coord
+        #print("current node is", curr_node, 'with coord', coord_0)
+        #print('curstate', curr_state)
+
+        if curr_state == goal_state:
+            break
+
+        for move in moves:
+            #print("curr node before iteration begins", curr_node)
+            coord_next = tuple(sum(x) for x in zip(curr_node.coord,move))
+            #print('coord:', coord_next)
+            #print("next coord is",coord_next)
+            if all([0 <= y <= n -1 for y in coord_next]):
+                fval = curr_node.fval + 1
+                #print("gval is", gval)
+                curr_state_copy = [[curr_state[i][j] for j in range(n)] for i in range(n)]
+
+                #print("curr state copy is", curr_state_copy)
+                c_0 = coord_0[0] #make this less ugly
+                c_1 = coord_0[1]
+                n_0 = coord_next[0]
+                n_1 = coord_next[1]
+                curr_state_copy[c_0][c_1], curr_state_copy[n_0][n_1] = curr_state_copy[n_0][n_1],  curr_state_copy[c_0][c_1]
+                #print("curr_state_copy with indices switched is", curr_state_copy)
+                db_compatible_copy = listoflists_tuple(curr_state_copy)
+                #print("db comp", db_compatible_copy)
+                if not db_compatible_copy in costs_db or db_compatible_copy in costs_db and costs_db[db_compatible_copy].gval < gval:
+                    gval = heuristic(curr_state_copy, goal_state)
+                    #print(hval)
+                    next_node = PuzzleNode(curr_state_copy, coord_next, fval, gval, curr_node)
+                    #print(next_node)
+                    #print("the node is:",next_node.coord)
+                    heapq.heappush(frontier, next_node)
+                    costs_db[db_compatible_copy] = next_node
+                    #print("curr node after swaps",curr_node)
+
+                    expansion_counter += 1
+                    #print("expanding again!", "current_count", expansion_counter)
+        #print('len of frontier:', len(frontier))
+
+    # Reconstruct the optimal path
+    optimal_path = [curr_node.coord]
+    while curr_node.parent:
+        optimal_path.append((curr_node.parent).coord)
+        curr_node = curr_node.parent
+    optimal_path = optimal_path[::-1]
+    if printResults:
+        print("A* search completed in %d steps\n" % expansion_counter)
+        print("Optimal Path to Goal:\n")
+        print(optimal_path)
+
+    return len(optimal_path), max_frontier, 0
+
+
+puzzleList = [[[5,7,6],[2,4,3],[8,1,0]],[[7,0,8],[4,6,1],[5,3,2]],[[2,3,7],[1,8,0],[6,5,4]]]
+
+
+
+for puzzle in puzzleList:
+    print('-' * 30)
+    print(puzzle)
+    for heur in heuristics:
+        start_state = puzzle
+        print(solvePuzzle(3, start_state, heur, True))
